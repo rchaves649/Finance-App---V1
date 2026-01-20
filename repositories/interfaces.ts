@@ -27,11 +27,14 @@ export interface IClassificationRepository {
   getAll(scopeId: string): ClassificationMemoryEntry[];
   find(scopeId: string, normalizedKey: string): ClassificationMemoryEntry | undefined;
   save(entry: ClassificationMemoryEntry): void;
+  delete(scopeId: string, normalizedKey: string): void;
 }
 
 export interface IRecurringRepository {
+  getAll(scopeId: string): RecurringMemoryEntry[];
   find(scopeId: string, normalizedKey: string): RecurringMemoryEntry | undefined;
   save(entry: RecurringMemoryEntry): void;
+  delete(scopeId: string, normalizedKey: string): void;
 }
 
 export interface IAppRepository {

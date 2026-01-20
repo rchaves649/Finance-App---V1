@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { useScope } from '../shared/ScopeContext';
 import { 
@@ -17,13 +16,33 @@ export const TransactionsContainer: React.FC = () => {
   const [categories, setCategories] = useState<Category[]>([]);
   const [subcategories, setSubcategories] = useState<Subcategory[]>([]);
 
+  // Filtering states
+  const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
+  const [availableMonths, setAvailableMonths] = useState<string[]>([]);
+
   const loadData = useCallback(() => {
-    const sortedTxs = TransactionService.getScopedTransactions(currentScope);
+    const sanitizedTxs = TransactionService.getScopedTransactions(currentScope);
     
-    setTransactions(sortedTxs);
+    // Extract available months from all scoped transactions before filtering
+    const months = Array.from(
+      new Set(
+        sanitizedTxs.map(tx => new Date(tx.date).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }))
+      )
+    );
+    setAvailableMonths(months);
+
+    // Apply the month filter
+    const filteredTxs = selectedMonth
+      ? sanitizedTxs.filter(tx => {
+          const txMonth = new Date(tx.date).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+          return txMonth === selectedMonth;
+        })
+      : sanitizedTxs;
+
+    setTransactions(filteredTxs);
     setCategories(CategoryRepository.getAll(currentScope.scopeId));
     setSubcategories(SubcategoryRepository.getAll(currentScope.scopeId));
-  }, [currentScope]);
+  }, [currentScope, selectedMonth]);
 
   useEffect(() => {
     loadData();
@@ -107,6 +126,9 @@ export const TransactionsContainer: React.FC = () => {
       onMoveToIndividual={handleMoveToIndividual}
       onRevertToShared={handleRevertToShared}
       onLoadDemo={handleLoadDemo}
+      selectedMonth={selectedMonth}
+      setSelectedMonth={setSelectedMonth}
+      availableMonths={availableMonths}
     />
   );
 };

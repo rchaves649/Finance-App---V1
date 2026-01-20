@@ -122,10 +122,15 @@ export const ClassificationRepository: IClassificationRepository = {
     } else {
       setLocal(STORAGE_KEYS.CLASSIFICATION, [...all, entry]);
     }
+  },
+  delete: (scopeId: string, normalizedKey: string) => {
+    const all = getLocal<ClassificationMemoryEntry>(STORAGE_KEYS.CLASSIFICATION);
+    setLocal(STORAGE_KEYS.CLASSIFICATION, all.filter(e => !(e.scopeId === scopeId && e.normalizedKey === normalizedKey)));
   }
 };
 
 export const RecurringRepository: IRecurringRepository = {
+  getAll: (scopeId: string) => getLocal<RecurringMemoryEntry>(STORAGE_KEYS.RECURRING).filter(e => e.scopeId === scopeId),
   find: (scopeId: string, normalizedKey: string) => 
     getLocal<RecurringMemoryEntry>(STORAGE_KEYS.RECURRING).find(e => e.scopeId === scopeId && e.normalizedKey === normalizedKey),
   save: (entry: RecurringMemoryEntry) => {
@@ -138,6 +143,10 @@ export const RecurringRepository: IRecurringRepository = {
     } else {
       setLocal(STORAGE_KEYS.RECURRING, [...all, entry]);
     }
+  },
+  delete: (scopeId: string, normalizedKey: string) => {
+    const all = getLocal<RecurringMemoryEntry>(STORAGE_KEYS.RECURRING);
+    setLocal(STORAGE_KEYS.RECURRING, all.filter(e => !(e.scopeId === scopeId && e.normalizedKey === normalizedKey)));
   }
 };
 

@@ -1,5 +1,4 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Transaction, Category, Subcategory, ScopeType } from '../types/finance';
 import { FileUp, Beaker } from 'lucide-react';
 import { TransactionTable } from './components/TransactionTable';
@@ -17,14 +16,24 @@ interface TransactionsViewProps {
   onMoveToIndividual: (id: string, userId: 'A' | 'B') => void;
   onRevertToShared: (id: string) => void;
   onLoadDemo: () => void;
+  selectedMonth: string | null;
+  setSelectedMonth: (month: string) => void;
+  availableMonths: string[];
 }
 
 export const TransactionsView: React.FC<TransactionsViewProps> = ({
   transactions, categories, subcategories, scopeType, currentScopeId,
-  onImport, onUpdate, onConfirm, onDelete, onMoveToIndividual, onRevertToShared, onLoadDemo
+  onImport, onUpdate, onConfirm, onDelete, onMoveToIndividual, onRevertToShared, onLoadDemo,
+  selectedMonth, setSelectedMonth, availableMonths
 }) => {
   const isShared = scopeType === 'shared';
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!selectedMonth && availableMonths.length > 0) {
+      setSelectedMonth(availableMonths[0]);
+    }
+  }, [availableMonths]);
 
   return (
     <div className="space-y-8">
@@ -39,6 +48,24 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
           <input type="file" accept=".csv" onChange={onImport} className="hidden" />
         </label>
       </div>
+
+      {availableMonths.length > 0 && (
+        <div className="flex flex-wrap gap-2 mb-4">
+          {availableMonths.map(month => (
+            <button
+              key={month}
+              onClick={() => setSelectedMonth(month)}
+              className={`px-4 py-1 rounded-full text-sm font-medium transition-colors ${
+                selectedMonth === month
+                  ? 'bg-indigo-600 text-white'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              {month}
+            </button>
+          ))}
+        </div>
+      )}
 
       {transactions.length > 0 ? (
         <TransactionTable 

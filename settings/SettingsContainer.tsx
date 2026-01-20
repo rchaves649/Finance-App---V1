@@ -1,19 +1,29 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useScope } from '../shared/ScopeContext';
-import { CategoryRepository, SubcategoryRepository, AppRepository } from '../services/localRepositories';
+import { 
+  CategoryRepository, 
+  SubcategoryRepository, 
+  AppRepository, 
+  ClassificationRepository, 
+  RecurringRepository 
+} from '../services/localRepositories';
 import { DemoSeedService } from '../services/demoSeed';
-import { Category, Subcategory } from '../types/finance';
+import { Category, Subcategory, ClassificationMemoryEntry, RecurringMemoryEntry } from '../types/finance';
 import { SettingsView } from './SettingsView';
 
 export const SettingsContainer: React.FC = () => {
   const { currentScope, updateScopeSettings } = useScope();
   const [categories, setCategories] = useState<Category[]>([]);
   const [subcategories, setSubcategories] = useState<Subcategory[]>([]);
+  const [mappings, setMappings] = useState<ClassificationMemoryEntry[]>([]);
+  const [recurringRules, setRecurringRules] = useState<RecurringMemoryEntry[]>([]);
 
   const loadData = useCallback(() => {
     setCategories(CategoryRepository.getAll(currentScope.scopeId));
     setSubcategories(SubcategoryRepository.getAll(currentScope.scopeId));
+    setMappings(ClassificationRepository.getAll(currentScope.scopeId));
+    setRecurringRules(RecurringRepository.getAll(currentScope.scopeId));
   }, [currentScope.scopeId]);
 
   useEffect(() => {
@@ -58,6 +68,14 @@ export const SettingsContainer: React.FC = () => {
     loadData();
   };
 
+  const handleDeleteMapping = (normalizedKey: string) => {
+    if (window.confirm(`Deseja remover o aprendizado para "${normalizedKey}"?`)) {
+      ClassificationRepository.delete(currentScope.scopeId, normalizedKey);
+      RecurringRepository.delete(currentScope.scopeId, normalizedKey);
+      loadData();
+    }
+  };
+
   const handleUpdateSplit = (split: { A: number, B: number }) => {
     updateScopeSettings(currentScope.scopeId, { defaultSplit: split });
   };
@@ -81,10 +99,13 @@ export const SettingsContainer: React.FC = () => {
       currentScope={currentScope}
       categories={categories}
       subcategories={subcategories}
+      mappings={mappings}
+      recurringRules={recurringRules}
       onAddCategory={handleAddCategory}
       onAddSubcategory={handleAddSubcategory}
       onDeleteCategory={handleDeleteCategory}
       onDeleteSubcategory={handleDeleteSubcategory}
+      onDeleteMapping={handleDeleteMapping}
       onUpdateSplit={handleUpdateSplit}
       onLoadDemo={handleLoadDemo}
       onClearAll={handleClearAll}
