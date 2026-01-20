@@ -3,11 +3,11 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useScope } from '../shared/ScopeContext';
 import { CategoryRepository, SubcategoryRepository, AppRepository } from '../services/localRepositories';
 import { DemoSeedService } from '../services/demoSeed';
-import { Category, Subcategory } from '../types';
+import { Category, Subcategory } from '../types/finance';
 import { SettingsView } from './SettingsView';
 
 export const SettingsContainer: React.FC = () => {
-  const { currentScope } = useScope();
+  const { currentScope, updateScopeSettings } = useScope();
   const [categories, setCategories] = useState<Category[]>([]);
   const [subcategories, setSubcategories] = useState<Subcategory[]>([]);
 
@@ -58,6 +58,10 @@ export const SettingsContainer: React.FC = () => {
     loadData();
   };
 
+  const handleUpdateSplit = (split: { A: number, B: number }) => {
+    updateScopeSettings(currentScope.scopeId, { defaultSplit: split });
+  };
+
   const handleLoadDemo = () => {
     if (window.confirm('Isso irá carregar dados fictícios no escopo atual. Continuar?')) {
       DemoSeedService.seed(currentScope.scopeId);
@@ -74,12 +78,14 @@ export const SettingsContainer: React.FC = () => {
 
   return (
     <SettingsView 
+      currentScope={currentScope}
       categories={categories}
       subcategories={subcategories}
       onAddCategory={handleAddCategory}
       onAddSubcategory={handleAddSubcategory}
       onDeleteCategory={handleDeleteCategory}
       onDeleteSubcategory={handleDeleteSubcategory}
+      onUpdateSplit={handleUpdateSplit}
       onLoadDemo={handleLoadDemo}
       onClearAll={handleClearAll}
     />

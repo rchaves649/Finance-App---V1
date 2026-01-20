@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { LayoutDashboard, Receipt, Settings, Wallet } from 'lucide-react';
-import { ViewType } from '../types';
+import { ViewType } from '../types/finance';
 import { useScope } from './ScopeContext';
 
 interface LayoutProps {

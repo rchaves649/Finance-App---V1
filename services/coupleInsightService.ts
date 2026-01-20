@@ -1,6 +1,6 @@
 
 import { TransactionRepository, CategoryRepository, SubcategoryRepository } from './localRepositories';
-import { Period, Transaction, Category, CoupleInsightDTO, CoupleInsightData, CoupleInsightMetrics, TopDriver } from '../types';
+import { Period, Transaction, Category, CoupleInsightDTO, CoupleInsightData, CoupleInsightMetrics, TopDriver } from '../types/finance';
 import { inPeriod } from '../shared/dateUtils';
 
 // Simple heuristic: Housing and Education are considered fixed.
@@ -11,7 +11,10 @@ export const CoupleInsightService = {
     // Only applies to month-based periods for now to establish baseline
     if (period.kind !== 'month') return null;
 
-    const allTransactions = TransactionRepository.getAll(scopeId).filter(t => t.isConfirmed);
+    // Use all transactions of the scope, but exclude those migrated from shared
+    const allTransactions = TransactionRepository.getAll(scopeId)
+      .filter(t => t.isConfirmed && !t.migratedFromShared);
+
     const categories = CategoryRepository.getAll(scopeId);
     const subcategories = SubcategoryRepository.getAll(scopeId);
 

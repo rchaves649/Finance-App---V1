@@ -4,14 +4,12 @@ import { useScope } from '../shared/ScopeContext';
 import { 
   TransactionRepository, 
   CategoryRepository, 
-  SubcategoryRepository, 
-  ClassificationRepository 
+  SubcategoryRepository 
 } from '../services/localRepositories';
 import { DemoSeedService } from '../services/demoSeed';
-import { CSVService } from '../services/csvService';
-import { Transaction, Category, Subcategory } from '../types';
+import { TransactionService } from '../services/transactionService';
+import { Transaction, Category, Subcategory } from '../types/finance';
 import { TransactionsView } from './TransactionsView';
-import { normalizeDescription } from '../classification/classificationService';
 
 export const TransactionsContainer: React.FC = () => {
   const { currentScope } = useScope();
@@ -20,13 +18,12 @@ export const TransactionsContainer: React.FC = () => {
   const [subcategories, setSubcategories] = useState<Subcategory[]>([]);
 
   const loadData = useCallback(() => {
-    const txs = TransactionRepository.getAll(currentScope.scopeId);
-    const sortedTxs = [...txs].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    const sortedTxs = TransactionService.getScopedTransactions(currentScope);
     
     setTransactions(sortedTxs);
     setCategories(CategoryRepository.getAll(currentScope.scopeId));
     setSubcategories(SubcategoryRepository.getAll(currentScope.scopeId));
-  }, [currentScope.scopeId]);
+  }, [currentScope]);
 
   useEffect(() => {
     loadData();
@@ -38,30 +35,7 @@ export const TransactionsContainer: React.FC = () => {
 
     try {
       const text = await file.text();
-      const rawData = CSVService.parse(text);
-      
-      // Load classification memory to optimize lookup during mapping
-      const memory = ClassificationRepository.getAll(currentScope.scopeId);
-      const memoryMap = new Map(memory.map(m => [m.normalizedKey, m]));
-
-      const newTransactions: Transaction[] = rawData.map(item => {
-        const normalized = normalizeDescription(item.description);
-        const match = memoryMap.get(normalized);
-
-        return {
-          id: crypto.randomUUID(),
-          scopeId: currentScope.scopeId,
-          date: item.date,
-          description: item.description,
-          amount: item.amount,
-          categoryId: match?.categoryId,
-          subcategoryId: match?.subcategoryId,
-          isConfirmed: false,
-          isSuggested: !!match
-        };
-      });
-
-      TransactionRepository.saveMany(newTransactions);
+      TransactionService.processCSVImport(text, currentScope);
       loadData();
     } catch (error) {
       console.error('Erro ao importar CSV:', error);
@@ -73,39 +47,37 @@ export const TransactionsContainer: React.FC = () => {
 
   const handleUpdate = (id: string, updates: Partial<Transaction>) => {
     const tx = transactions.find(t => t.id === id);
-    if (!tx || tx.isConfirmed) return;
+    if (!tx) return;
     
-    const updated = { ...tx, ...updates };
-    // If the user manually changes the classification, remove the suggested flag
-    if (updates.categoryId || updates.subcategoryId) {
-      updated.isSuggested = false;
-    }
-    
-    TransactionRepository.save(updated);
+    TransactionService.updateTransaction(tx, updates);
     loadData();
   };
 
-  const handleConfirm = (id: string) => {
+  const handleConfirm = (id: string, isRecurring?: boolean) => {
     const tx = transactions.find(t => t.id === id);
-    if (!tx || !tx.categoryId || !tx.subcategoryId) return;
+    if (!tx) return;
 
-    // 1. Persist transaction as confirmed
-    const confirmedTx: Transaction = { ...tx, isConfirmed: true, isSuggested: false };
-    TransactionRepository.save(confirmedTx);
+    try {
+      TransactionService.confirmTransaction(tx, !!isRecurring, currentScope);
+      loadData();
+    } catch (error: any) {
+      alert(error.message || 'Erro ao confirmar transação.');
+    }
+  };
 
-    // 2. Update classification memory
-    const normalizedKey = normalizeDescription(tx.description);
-    const existingMemory = ClassificationRepository.find(currentScope.scopeId, normalizedKey);
-    
-    ClassificationRepository.save({
-      scopeId: currentScope.scopeId,
-      normalizedKey,
-      categoryId: tx.categoryId,
-      subcategoryId: tx.subcategoryId,
-      usageCount: (existingMemory?.usageCount || 0) + 1,
-      lastUsedAt: new Date().toISOString()
-    });
+  const handleMoveToIndividual = (id: string, userId: 'A' | 'B') => {
+    const tx = transactions.find(t => t.id === id);
+    if (!tx) return;
 
+    TransactionService.moveToIndividual(tx, userId, currentScope.scopeId);
+    loadData();
+  };
+
+  const handleRevertToShared = (id: string) => {
+    const tx = transactions.find(t => t.id === id);
+    if (!tx) return;
+
+    TransactionService.revertToShared(tx, currentScope.scopeId, currentScope.defaultSplit);
     loadData();
   };
 
@@ -126,10 +98,14 @@ export const TransactionsContainer: React.FC = () => {
       transactions={transactions}
       categories={categories}
       subcategories={subcategories}
+      scopeType={currentScope.scopeType}
+      currentScopeId={currentScope.scopeId}
       onImport={handleImportCSV}
       onUpdate={handleUpdate}
       onConfirm={handleConfirm}
       onDelete={handleDelete}
+      onMoveToIndividual={handleMoveToIndividual}
+      onRevertToShared={handleRevertToShared}
       onLoadDemo={handleLoadDemo}
     />
   );

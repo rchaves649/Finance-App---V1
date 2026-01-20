@@ -1,8 +1,9 @@
 
 import React, { useState } from 'react';
 import { ScopeProvider } from './shared/ScopeContext';
+import { PeriodProvider } from './shared/PeriodContext';
 import { Layout } from './shared/Layout';
-import { ViewType } from './types';
+import { ViewType } from './types/finance';
 import { DashboardContainer } from './dashboard/DashboardContainer';
 import { TransactionsContainer } from './transactions/TransactionsContainer';
 import { SettingsContainer } from './settings/SettingsContainer';
@@ -21,9 +22,11 @@ const App: React.FC = () => {
 
   return (
     <ScopeProvider>
-      <Layout activeView={activeView} onViewChange={setActiveView}>
-        {renderContent()}
-      </Layout>
+      <PeriodProvider>
+        <Layout activeView={activeView} onViewChange={setActiveView}>
+          {renderContent()}
+        </Layout>
+      </PeriodProvider>
     </ScopeProvider>
   );
 };

@@ -1,5 +1,5 @@
 
-import { Period } from "../types";
+import { Period } from "../types/finance";
 
 /**
  * Normalizes a date or string to YYYY-MM-DD using local time to avoid timezone shifts.
