@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Sparkles } from 'lucide-react';
-import { Category, Subcategory, ClassificationMemoryEntry, RecurringMemoryEntry } from '../../types/finance';
+import { Category, Subcategory, ClassificationMemoryEntry, RecurringMemoryEntry, Scope } from '../../types/finance';
 import { MappingRow } from './MappingRow';
 
 interface IntelligenceMappingTableProps {
@@ -9,6 +9,7 @@ interface IntelligenceMappingTableProps {
   recurringRules: RecurringMemoryEntry[];
   categories: Category[];
   subcategories: Subcategory[];
+  currentScope: Scope;
   onDeleteMapping: (normalizedKey: string) => void;
 }
 
@@ -17,6 +18,7 @@ export const IntelligenceMappingTable: React.FC<IntelligenceMappingTableProps> =
   recurringRules,
   categories,
   subcategories,
+  currentScope,
   onDeleteMapping
 }) => {
   return (
@@ -45,6 +47,7 @@ export const IntelligenceMappingTable: React.FC<IntelligenceMappingTableProps> =
               <MappingRow 
                 key={idx}
                 mapping={mapping}
+                currentScope={currentScope}
                 category={categories.find(c => c.id === mapping.categoryId)}
                 subcategory={subcategories.find(s => s.id === mapping.subcategoryId)}
                 recurringRule={recurringRules.find(r => r.normalizedKey === mapping.normalizedKey)}

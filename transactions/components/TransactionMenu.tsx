@@ -1,12 +1,14 @@
 
 import React from 'react';
-import { MoreVertical, User, RotateCcw, Trash2 } from 'lucide-react';
+import { MoreVertical, User, RotateCcw, Trash2, Edit2 } from 'lucide-react';
 
 interface TransactionMenuProps {
   isOpen: boolean;
   isShared: boolean;
   isInIndividualScope: boolean;
+  isConfirmed: boolean;
   onToggle: () => void;
+  onEdit: () => void;
   onMoveToIndividual: (userId: 'A' | 'B') => void;
   onRevertToShared: () => void;
   onDelete: () => void;
@@ -16,7 +18,9 @@ export const TransactionMenu: React.FC<TransactionMenuProps> = ({
   isOpen,
   isShared,
   isInIndividualScope,
+  isConfirmed,
   onToggle,
+  onEdit,
   onMoveToIndividual,
   onRevertToShared,
   onDelete
@@ -32,6 +36,15 @@ export const TransactionMenu: React.FC<TransactionMenuProps> = ({
       
       {isOpen && (
         <div className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-xl border border-gray-100 z-[60] overflow-hidden py-1">
+          {isConfirmed && (
+             <button 
+              onClick={onEdit}
+              className="w-full flex items-center gap-2 px-4 py-2 text-sm text-indigo-600 hover:bg-indigo-50 transition-colors font-medium"
+            >
+              <Edit2 size={16} /> Editar Lançamento
+            </button>
+          )}
+
           {isShared && (
             <>
               {!isInIndividualScope ? (
@@ -57,9 +70,9 @@ export const TransactionMenu: React.FC<TransactionMenuProps> = ({
                   <RotateCcw size={16} /> Revert to Shared Scope
                 </button>
               )}
-              <div className="border-t border-gray-50 my-1"></div>
             </>
           )}
+          <div className="border-t border-gray-50 my-1"></div>
           <button
             onClick={onDelete}
             className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"

@@ -28,7 +28,7 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
           onChange={(e) => onToggleRecurring(e.target.checked)}
           className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500"
         />
-        <span className="text-xs text-gray-600">Salvar como recorrente</span>
+        <span className="text-xs text-gray-600">Salvar distribuição de pagamento entre as pessoas de forma recorrente</span>
       </label>
       <div className="flex gap-2">
         <button 

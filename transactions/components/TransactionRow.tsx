@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Transaction, Category, Subcategory } from '../../types/finance';
 import { Check, CheckCircle2, Sparkles, User, Repeat, XCircle } from 'lucide-react';
@@ -33,38 +32,51 @@ export const TransactionRow: React.FC<TransactionRowProps> = ({
   const [isConfirming, setIsConfirming] = useState(false);
   const [isRecurring, setIsRecurring] = useState(false);
 
-  const hasClassification = !!tx.categoryId && !!tx.subcategoryId;
+  const hasCategory = !!tx.categoryId;
+  const hasSubcategory = !!tx.subcategoryId;
+  const hasClassification = hasCategory && hasSubcategory;
+  
   const shareSum = (tx.payerShare?.A || 0) + (tx.payerShare?.B || 0);
   const isShareValid = !isShared || Math.abs(shareSum - tx.amount) < 0.01;
   const canConfirm = hasClassification && isShareValid;
   
-  const isManualConfirmed = tx.isConfirmed && !tx.isAutoConfirmed;
   const isAutoConfirmed = tx.isConfirmed && tx.isAutoConfirmed;
   const isMigrated = !!tx.migratedFromShared;
   const isInIndividualScope = tx.scopeId !== currentScopeId;
   const userId = ScopeDomainService.getUserIdFromChildScope(tx.scopeId);
 
+  const handleEdit = () => {
+    onUpdate(tx.id, { isConfirmed: false });
+    onToggleMenu(); // Close menu after action
+  };
+
+  const validationMessage = (
+    <span className="text-[10px] text-red-500 font-medium italic flex items-center gap-1 leading-none mt-1">
+      <XCircle size={10} /> Não classificado
+    </span>
+  );
+
   return (
-    <tr className={`${!tx.isConfirmed ? 'bg-amber-50/20' : ''} hover:bg-gray-50 transition-colors relative`}>
-      <td className={`px-6 py-4 text-sm text-gray-600 ${isMigrated ? 'opacity-40 grayscale' : ''}`}>
+    <tr className={`${!tx.isConfirmed ? 'bg-amber-50/10' : ''} hover:bg-gray-50/80 transition-colors relative`}>
+      <td className={`px-6 py-4 text-sm text-gray-600 font-medium ${isMigrated ? 'opacity-40 grayscale' : ''}`}>
         {new Date(tx.date).toLocaleDateString('pt-BR')}
       </td>
       <td className="px-6 py-4">
         <div className={`flex flex-col ${isMigrated ? 'opacity-40 grayscale' : ''}`}>
-          <span className={`text-sm font-medium ${isManualConfirmed ? 'text-gray-400' : 'text-gray-900'}`}>{tx.description}</span>
+          <span className="text-sm font-bold text-gray-600">{tx.description}</span>
           {isMigrated && (
             <span className="text-[10px] text-gray-500 font-bold flex items-center gap-1 mt-1 whitespace-nowrap">
               <User size={10} /> Movida para conta individual de {userId}
             </span>
           )}
           {tx.isRecurring && (
-            <span className="text-[10px] text-indigo-500 font-bold flex items-center gap-1 mt-1">
+            <span className="text-[10px] text-indigo-500 font-bold flex items-center gap-1 mt-0.5">
               <Repeat size={10} /> Recorrente
             </span>
           )}
         </div>
       </td>
-      <td className={`px-6 py-4 text-sm font-semibold text-gray-900 whitespace-nowrap ${isMigrated ? 'opacity-40 grayscale' : ''}`}>
+      <td className={`px-6 py-4 text-sm font-bold text-gray-600 whitespace-nowrap ${isMigrated ? 'opacity-40 grayscale' : ''}`}>
         {formatCurrency(tx.amount)}
       </td>
       {isShared && (
@@ -72,7 +84,7 @@ export const TransactionRow: React.FC<TransactionRowProps> = ({
           <td className="px-6 py-4">
             <CurrencyInput 
               value={tx.payerShare?.A || 0}
-              disabled={isManualConfirmed || isMigrated}
+              disabled={tx.isConfirmed || isMigrated}
               isValid={isShareValid}
               onChange={(val) => onUpdate(tx.id, { payerShare: { ...tx.payerShare!, A: val } })}
             />
@@ -80,7 +92,7 @@ export const TransactionRow: React.FC<TransactionRowProps> = ({
           <td className="px-6 py-4">
             <CurrencyInput 
               value={tx.payerShare?.B || 0}
-              disabled={isManualConfirmed || isMigrated}
+              disabled={tx.isConfirmed || isMigrated}
               isValid={isShareValid}
               onChange={(val) => onUpdate(tx.id, { payerShare: { ...tx.payerShare!, B: val } })}
             />
@@ -92,36 +104,39 @@ export const TransactionRow: React.FC<TransactionRowProps> = ({
           <CategorySelector 
             categories={categories} 
             value={tx.categoryId} 
-            disabled={isManualConfirmed || isMigrated}
+            disabled={tx.isConfirmed || isMigrated}
             onChange={(val) => onUpdate(tx.id, { categoryId: val, subcategoryId: undefined })}
           />
           <div className="flex flex-col gap-0.5">
             {isAutoConfirmed && <span className="text-[10px] text-emerald-600 font-medium italic flex items-center gap-1 leading-none"><CheckCircle2 size={10} /> Confirmado automaticamente</span>}
             {tx.isSuggested && !tx.isConfirmed && <span className="text-[10px] text-amber-500 font-medium italic flex items-center gap-1 leading-none"><Sparkles size={10} /> Sugerido</span>}
-            {!hasClassification && <span className="text-[10px] text-red-500 font-medium italic flex items-center gap-1 leading-none"><XCircle size={10} /> Não classificado</span>}
+            {!hasCategory && !tx.isConfirmed && validationMessage}
           </div>
         </div>
       </td>
       <td className="px-6 py-4">
-        <SubcategorySelector 
-          subcategories={subcategories}
-          categoryId={tx.categoryId}
-          value={tx.subcategoryId || ''}
-          disabled={isManualConfirmed || isMigrated}
-          onChange={(val) => onUpdate(tx.id, { subcategoryId: val })}
-        />
+        <div className={`flex flex-col gap-1.5 ${isMigrated ? 'opacity-40 grayscale' : ''}`}>
+          <SubcategorySelector 
+            subcategories={subcategories}
+            categoryId={tx.categoryId}
+            value={tx.subcategoryId || ''}
+            disabled={tx.isConfirmed || isMigrated}
+            onChange={(val) => onUpdate(tx.id, { subcategoryId: val })}
+          />
+          {hasCategory && !hasSubcategory && !tx.isConfirmed && validationMessage}
+        </div>
       </td>
       <td className={`px-6 py-4 ${isMigrated ? 'opacity-40 grayscale' : ''}`}>
-        <span className={`text-xs px-2 py-0.5 rounded font-bold uppercase tracking-tighter ${
-          tx.classificationStatus === 'auto' ? 'bg-gray-100 text-gray-600' : 
-          tx.classificationStatus === 'manual' ? 'bg-blue-100 text-blue-700' : 'bg-yellow-100 text-yellow-700'
+        <span className={`text-[10px] px-2 py-1 rounded font-bold uppercase tracking-tight ${
+          tx.classificationStatus === 'auto' ? 'bg-gray-100 text-gray-500' : 
+          tx.classificationStatus === 'manual' ? 'bg-indigo-50 text-indigo-600' : 'bg-amber-50 text-amber-600'
         }`}>
           {tx.classificationStatus}
         </span>
       </td>
-      <td className="px-6 py-4">
-        <div className="flex items-center gap-2">
-          {!isManualConfirmed && !isMigrated ? (
+      <td className="px-6 py-4 text-center">
+        <div className="flex items-center justify-center gap-2">
+          {!tx.isConfirmed && !isMigrated ? (
             <div className="relative group/btn">
               <ConfirmationDialog 
                 isVisible={isConfirming} 
@@ -133,20 +148,22 @@ export const TransactionRow: React.FC<TransactionRowProps> = ({
               <button
                 onClick={() => { if(canConfirm) setIsConfirming(true); }}
                 disabled={!canConfirm}
-                className={`p-2 rounded-lg transition-all ${canConfirm ? 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100 shadow-sm' : 'bg-gray-100 text-gray-300 cursor-not-allowed'}`}
+                className={`p-2 rounded-lg transition-all ${canConfirm ? 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100 shadow-sm' : 'bg-gray-50 text-gray-300 cursor-not-allowed'}`}
               >
                 <Check size={18} />
               </button>
             </div>
           ) : (
-            <div className={`p-2 ${isManualConfirmed ? 'text-emerald-500' : 'text-gray-300'}`}><CheckCircle2 size={18} /></div>
+            <div className={`p-2 ${tx.isConfirmed ? 'text-emerald-500' : 'text-gray-300'}`}><CheckCircle2 size={18} /></div>
           )}
 
           <TransactionMenu 
             isOpen={isMenuOpen}
             isShared={isShared}
             isInIndividualScope={isInIndividualScope}
+            isConfirmed={tx.isConfirmed}
             onToggle={onToggleMenu}
+            onEdit={handleEdit}
             onMoveToIndividual={(userId) => onMoveToIndividual(tx.id, userId)}
             onRevertToShared={() => onRevertToShared(tx.id)}
             onDelete={() => onDelete(tx.id)}

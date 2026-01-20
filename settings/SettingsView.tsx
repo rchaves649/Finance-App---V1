@@ -94,6 +94,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         recurringRules={recurringRules}
         categories={categories}
         subcategories={subcategories}
+        currentScope={currentScope}
         onDeleteMapping={onDeleteMapping}
       />
     </div>

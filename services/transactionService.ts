@@ -119,8 +119,7 @@ export const TransactionService = {
    * Sanitiza e salva atualizações em uma transação existente.
    */
   updateTransaction: (tx: Transaction, updates: Partial<Transaction>): void => {
-    if (tx.isConfirmed && !tx.isAutoConfirmed) return;
-
+    // Permite atualizações mesmo se confirmado para possibilitar a re-edição via UI
     const sanitizedUpdates = { ...updates };
     if (sanitizedUpdates.amount !== undefined) {
       sanitizedUpdates.amount = roundToTwo(sanitizedUpdates.amount);
@@ -134,10 +133,12 @@ export const TransactionService = {
 
     const updated = { ...tx, ...sanitizedUpdates };
     
+    // Se alterar categoria ou subcategoria, reseta o status de sugestão e auto-confirmação
     if (updates.categoryId || updates.subcategoryId) {
       updated.isSuggested = false;
       updated.isAutoConfirmed = false;
-      updated.isConfirmed = false;
+      // Não resetamos isConfirmed aqui automaticamente para permitir edições pontuais, 
+      // mas a UI deve lidar com o fluxo de re-confirmação se desejar.
       updated.classificationStatus = 'manual';
     }
     

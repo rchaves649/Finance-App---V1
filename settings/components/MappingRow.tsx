@@ -1,10 +1,11 @@
 
 import React from 'react';
 import { Trash2, User, Repeat } from 'lucide-react';
-import { Category, Subcategory, ClassificationMemoryEntry, RecurringMemoryEntry } from '../../types/finance';
+import { Category, Subcategory, ClassificationMemoryEntry, RecurringMemoryEntry, Scope } from '../../types/finance';
 
 interface MappingRowProps {
   mapping: ClassificationMemoryEntry;
+  currentScope: Scope;
   category?: Category;
   subcategory?: Subcategory;
   recurringRule?: RecurringMemoryEntry;
@@ -13,19 +14,44 @@ interface MappingRowProps {
 
 export const MappingRow: React.FC<MappingRowProps> = ({
   mapping,
+  currentScope,
   category,
   subcategory,
   recurringRule,
   onDelete
 }) => {
-  const formatSplitLabel = (rule?: RecurringMemoryEntry) => {
-    if (!rule || !rule.payerShare) return 'Automático';
-    const { A, B } = rule.payerShare;
-    const total = (A || 0) + (B || 0);
-    if (total === 0) return '0% A / 0% B';
-    const pctA = Math.round(((A || 0) / total) * 100);
-    const pctB = 100 - pctA;
-    return `${pctA}% A / ${pctB}% B`;
+  const renderSplitInfo = () => {
+    // If there is a manual recurring rule with a specific share
+    if (recurringRule?.payerShare) {
+      const { A, B } = recurringRule.payerShare;
+      const total = (A || 0) + (B || 0);
+      const pctA = total > 0 ? Math.round(((A || 0) / total) * 100) : 0;
+      const pctB = 100 - pctA;
+      
+      return (
+        <div className="flex flex-col">
+          <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-600">
+            <User size={12} className="text-indigo-400" />
+            {pctA}% A / {pctB}% B
+          </div>
+          <span className="text-[10px] text-gray-400 font-medium">Divisão Manual</span>
+        </div>
+      );
+    }
+
+    // Default split visualization for "Automatic" items
+    const defA = currentScope.defaultSplit?.A ?? 50;
+    const defB = currentScope.defaultSplit?.B ?? 50;
+    
+    return (
+      <div className="flex flex-col">
+        <div className="flex items-center gap-1.5 text-xs font-medium text-gray-600">
+          <User size={12} className="text-gray-400" />
+          {defA}% A / {defB}% B
+        </div>
+        <span className="text-[10px] text-gray-400 italic font-medium">Automático (Padrão)</span>
+      </div>
+    );
   };
 
   return (
@@ -44,10 +70,7 @@ export const MappingRow: React.FC<MappingRowProps> = ({
         </span>
       </td>
       <td className="px-6 py-4">
-        <div className="flex items-center gap-1.5 text-xs text-gray-600">
-          <User size={12} className="text-gray-400" />
-          {formatSplitLabel(recurringRule)}
-        </div>
+        {renderSplitInfo()}
       </td>
       <td className="px-6 py-4">
         <div className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-tighter ${
