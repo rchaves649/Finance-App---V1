@@ -1,27 +1,28 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useScope } from '../shared/ScopeContext';
+import { useToast } from '../shared/ToastContext';
 import { 
-  CategoryRepository, 
-  SubcategoryRepository, 
   AppRepository, 
   ClassificationRepository, 
   RecurringRepository 
 } from '../services/localRepositories';
 import { DemoSeedService } from '../services/demoSeed';
+import { CategoryService } from '../services/categoryService';
 import { Category, Subcategory, ClassificationMemoryEntry, RecurringMemoryEntry } from '../types/finance';
 import { SettingsView } from './SettingsView';
 
 export const SettingsContainer: React.FC = () => {
   const { currentScope, updateScopeSettings } = useScope();
+  const { showToast } = useToast();
   const [categories, setCategories] = useState<Category[]>([]);
   const [subcategories, setSubcategories] = useState<Subcategory[]>([]);
   const [mappings, setMappings] = useState<ClassificationMemoryEntry[]>([]);
   const [recurringRules, setRecurringRules] = useState<RecurringMemoryEntry[]>([]);
 
   const loadData = useCallback(() => {
-    setCategories(CategoryRepository.getAll(currentScope.scopeId));
-    setSubcategories(SubcategoryRepository.getAll(currentScope.scopeId));
+    setCategories(CategoryService.getAllCategories(currentScope.scopeId));
+    setSubcategories(CategoryService.getAllSubcategories(currentScope.scopeId));
     setMappings(ClassificationRepository.getAll(currentScope.scopeId));
     setRecurringRules(RecurringRepository.getAll(currentScope.scopeId));
   }, [currentScope.scopeId]);
@@ -31,40 +32,28 @@ export const SettingsContainer: React.FC = () => {
   }, [loadData]);
 
   const handleAddCategory = (name: string) => {
-    const trimmed = name.trim();
-    if (!trimmed) return;
-    
-    CategoryRepository.save({ 
-      id: crypto.randomUUID(), 
-      scopeId: currentScope.scopeId, 
-      name: trimmed 
-    });
+    CategoryService.addCategory(currentScope.scopeId, name);
+    showToast(`Categoria criada.`, 'success');
     loadData();
   };
 
   const handleAddSubcategory = (categoryId: string, name: string) => {
-    const trimmed = name.trim();
-    if (!trimmed) return;
-
-    SubcategoryRepository.save({ 
-      id: crypto.randomUUID(), 
-      scopeId: currentScope.scopeId, 
-      categoryId, 
-      name: trimmed 
-    });
+    CategoryService.addSubcategory(currentScope.scopeId, categoryId, name);
+    showToast(`Subcategoria criada.`, 'success');
     loadData();
   };
 
   const handleDeleteCategory = (id: string) => {
     if (window.confirm('Ao excluir uma categoria, todas as suas subcategorias também serão removidas. Continuar?')) {
-      SubcategoryRepository.deleteByCategory(currentScope.scopeId, id);
-      CategoryRepository.delete(id);
+      CategoryService.deleteCategory(currentScope.scopeId, id);
+      showToast('Categoria excluída.', 'info');
       loadData();
     }
   };
 
   const handleDeleteSubcategory = (id: string) => {
-    SubcategoryRepository.delete(id);
+    CategoryService.deleteSubcategory(id);
+    showToast('Subcategoria excluída.', 'info');
     loadData();
   };
 
@@ -72,17 +61,20 @@ export const SettingsContainer: React.FC = () => {
     if (window.confirm(`Deseja remover o aprendizado para "${normalizedKey}"?`)) {
       ClassificationRepository.delete(currentScope.scopeId, normalizedKey);
       RecurringRepository.delete(currentScope.scopeId, normalizedKey);
+      showToast('Mapeamento removido.', 'info');
       loadData();
     }
   };
 
   const handleUpdateSplit = (split: { A: number, B: number }) => {
     updateScopeSettings(currentScope.scopeId, { defaultSplit: split });
+    showToast('Divisão padrão atualizada.', 'success');
   };
 
   const handleLoadDemo = () => {
     if (window.confirm('Isso irá carregar dados fictícios no escopo atual. Continuar?')) {
       DemoSeedService.seed(currentScope.scopeId);
+      showToast('Dados de exemplo carregados.', 'success');
       loadData();
     }
   };

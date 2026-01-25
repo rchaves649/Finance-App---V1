@@ -1,57 +1,18 @@
-
-import { Transaction, Scope } from '../types/finance';
-import { TransactionRepository } from './localRepositories';
-import { roundToTwo } from '../shared/formatUtils';
-import { ClassificationEngine } from '../classification/classificationService';
-import { CSVService } from './csvService';
-import { ScopeDomainService } from './scopeDomainService';
+import { Transaction, Scope, TransactionNatures } from '../types/finance';
+import { TransactionRepository, ImportLogRepository } from './localRepositories';
+import { fromCents, toCents, allocateCents } from '../shared/formatUtils';
+import { ClassificationEngine, detectNature } from '../classification/classificationService';
+import { TransactionImportService } from './transactionImportService';
+import { TransactionMigrationService } from './transactionMigrationService';
+import { formatMonthYear } from '../shared/dateUtils';
 
 export const TransactionService = {
-  /**
-   * Obtém as transações do escopo, aplica sanitização (splits e status) e ordena por data.
-   * Utiliza o ID como critério de desempate para garantir ordenação estável e estática.
-   */
   getScopedTransactions: (scope: Scope): Transaction[] => {
     const txs = scope.scopeType === 'shared' 
       ? TransactionRepository.getSharedView(scope.scopeId)
       : TransactionRepository.getAll(scope.scopeId);
     
-    let needsUpdate = false;
-    const sanitizedTxs = txs.map(t => {
-      let isModified = false;
-
-      // Aplica split padrão se for escopo compartilhado e não tiver split definido
-      if (scope.scopeType === 'shared' && t.scopeId === scope.scopeId && !t.payerShare) {
-        isModified = true;
-        const splitA = scope.defaultSplit?.A ?? 50;
-        const splitB = scope.defaultSplit?.B ?? 50;
-        
-        t.payerShare = { 
-          A: roundToTwo((t.amount * splitA) / 100), 
-          B: roundToTwo((t.amount * splitB) / 100) 
-        };
-      }
-
-      // Garante status de classificação para dados legados ou demo
-      if (!t.classificationStatus) {
-        isModified = true;
-        if (!t.categoryId || !t.subcategoryId) {
-          t.classificationStatus = 'pending';
-        } else {
-          t.classificationStatus = t.isSuggested ? 'auto' : 'manual';
-        }
-      }
-
-      if (isModified) needsUpdate = true;
-      return t;
-    });
-
-    if (needsUpdate) {
-      TransactionRepository.saveMany(sanitizedTxs);
-    }
-
-    // Ordenação determinística: Data decrescente, ID como desempate (preserva ordem relativa estável)
-    return sanitizedTxs.sort((a, b) => {
+    return txs.sort((a, b) => {
       const dateA = new Date(a.date).getTime();
       const dateB = new Date(b.date).getTime();
       if (dateB !== dateA) return dateB - dateA;
@@ -59,153 +20,137 @@ export const TransactionService = {
     });
   },
 
-  /**
-   * Processa o texto CSV, gera transações com sugestões e salva no repositório.
-   */
-  processCSVImport: (csvText: string, scope: Scope): void => {
-    const rawData = CSVService.parse(csvText);
+  getAvailableMonths: (transactions: Transaction[]): string[] => {
+    return Array.from(
+      new Set(
+        transactions.map(tx => formatMonthYear(tx.date))
+      )
+    ).filter(m => !!m).sort((a, b) => b.localeCompare(a));
+  },
+
+  deleteTransaction: (id: string): void => {
+    TransactionRepository.delete(id);
+  },
+
+  sanitizeTransactions: (scope: Scope): void => {
+    const txs = scope.scopeType === 'shared' 
+      ? TransactionRepository.getSharedView(scope.scopeId)
+      : TransactionRepository.getAll(scope.scopeId);
     
-    const newTransactions: Transaction[] = rawData.map(item => {
-      const suggestion = ClassificationEngine.suggest(scope.scopeId, item.description);
+    let modifiedTxs: Transaction[] = [];
 
-      let isRecurring = false;
-      let payerShare = undefined;
-      let classificationStatus: 'auto' | 'manual' | 'pending' = 'pending';
-
-      if (suggestion) {
-        classificationStatus = 'auto';
-        if (suggestion.payerShare) {
-          isRecurring = true;
-          payerShare = {
-            A: suggestion.payerShare.A !== null ? roundToTwo(suggestion.payerShare.A) : null,
-            B: suggestion.payerShare.B !== null ? roundToTwo(suggestion.payerShare.B) : null
-          };
-        }
+    txs.forEach(t => {
+      let isModified = false;
+      
+      if (!t.transactionNature) {
+        t.transactionNature = detectNature(t.description, t.amount);
+        isModified = true;
       }
 
-      const tx: Transaction = {
-        id: crypto.randomUUID(),
-        scopeId: scope.scopeId,
-        date: item.date,
-        description: item.description,
-        amount: roundToTwo(item.amount),
-        categoryId: suggestion?.categoryId,
-        subcategoryId: suggestion?.subcategoryId,
-        payerShare: payerShare,
-        isConfirmed: false,
-        isSuggested: !!suggestion,
-        isAutoConfirmed: false,
-        isRecurring,
-        classificationStatus
-      };
-
-      // Aplica split padrão no import se for compartilhado
-      if (scope.scopeType === 'shared' && !tx.payerShare) {
+      if (scope.scopeType === 'shared' && t.scopeId === scope.scopeId && !t.payerShare) {
+        isModified = true;
+        const totalCents = toCents(t.amount);
         const splitA = scope.defaultSplit?.A ?? 50;
-        const splitB = scope.defaultSplit?.B ?? 50;
-        tx.payerShare = { 
-          A: roundToTwo((item.amount * splitA) / 100), 
-          B: roundToTwo((item.amount * splitB) / 100) 
+        
+        // Uso da nova lógica de alocação segura de centavos
+        const { centsA, centsB } = allocateCents(totalCents, splitA);
+
+        t.payerShare = { 
+          A: fromCents(centsA), 
+          B: fromCents(centsB) 
         };
       }
 
-      return tx;
+      if (!t.classificationStatus) {
+        isModified = true;
+        t.classificationStatus = (!t.categoryId || !t.subcategoryId) ? 'pending' : (t.isSuggested ? 'auto' : 'manual');
+      }
+
+      if (isModified) modifiedTxs.push(t);
     });
 
-    TransactionRepository.saveMany(newTransactions);
+    if (modifiedTxs.length > 0) {
+      TransactionRepository.saveMany(modifiedTxs);
+    }
   },
 
-  /**
-   * Sanitiza e salva atualizações em uma transação existente.
-   */
-  updateTransaction: (tx: Transaction, updates: Partial<Transaction>): void => {
-    // Permite atualizações mesmo se confirmado para possibilitar a re-edição via UI
-    const sanitizedUpdates = { ...updates };
-    if (sanitizedUpdates.amount !== undefined) {
-      sanitizedUpdates.amount = roundToTwo(sanitizedUpdates.amount);
+  prepareCSVTransactions: TransactionImportService.prepareCSVTransactions,
+
+  saveTransactions: (txs: Transaction[], fileName?: string): void => {
+    const cleaned = txs.map(t => {
+      if (!t.classificationStatus) {
+        const isExcluded = t.transactionNature === TransactionNatures.REFUND || 
+                          t.transactionNature === TransactionNatures.PAYMENT ||
+                          t.isNeutralized;
+        t.classificationStatus = (!isExcluded && (!t.categoryId || !t.subcategoryId)) ? 'pending' : (t.isSuggested ? 'auto' : 'manual');
+      }
+      return t;
+    });
+    TransactionRepository.saveMany(cleaned);
+    
+    if (fileName && txs.length > 0) {
+      ImportLogRepository.logImport(txs[0].scopeId, fileName);
     }
-    if (sanitizedUpdates.payerShare) {
-      sanitizedUpdates.payerShare = {
-        A: sanitizedUpdates.payerShare.A !== null && sanitizedUpdates.payerShare.A !== undefined ? roundToTwo(sanitizedUpdates.payerShare.A) : null,
-        B: sanitizedUpdates.payerShare.B !== null && sanitizedUpdates.payerShare.B !== undefined ? roundToTwo(sanitizedUpdates.payerShare.B) : null,
+  },
+
+  updateTransaction: (tx: Transaction, updates: Partial<Transaction>): void => {
+    const updated = { ...tx, ...updates };
+    
+    // Normalização de centavos para valores financeiros
+    if (updates.amount !== undefined) updated.amount = fromCents(toCents(updates.amount));
+    if (updates.payerShare) {
+      updated.payerShare = {
+        A: updates.payerShare.A !== null ? fromCents(toCents(updates.payerShare.A)) : null,
+        B: updates.payerShare.B !== null ? fromCents(toCents(updates.payerShare.B)) : null,
       };
     }
 
-    const updated = { ...tx, ...sanitizedUpdates };
-    
-    // Se alterar categoria ou subcategoria, reseta o status de sugestão e auto-confirmação
-    if (updates.categoryId || updates.subcategoryId) {
+    const coreFields = ['description', 'amount', 'date', 'categoryId', 'subcategoryId', 'transactionNature', 'payerShare'];
+    const hasCoreUpdate = Object.keys(updates).some(k => coreFields.includes(k));
+
+    const isUnconfirming = tx.isConfirmed === true && updates.isConfirmed === false;
+
+    if (hasCoreUpdate || isUnconfirming) {
       updated.isSuggested = false;
-      updated.isAutoConfirmed = false;
-      // Não resetamos isConfirmed aqui automaticamente para permitir edições pontuais, 
-      // mas a UI deve lidar com o fluxo de re-confirmação se desejar.
-      updated.classificationStatus = 'manual';
+      
+      const isMissingClassification = !updated.categoryId || !updated.subcategoryId;
+      const isSystemNature = updated.transactionNature === TransactionNatures.REFUND || 
+                            updated.transactionNature === TransactionNatures.PAYMENT;
+
+      if (isMissingClassification && !isSystemNature) {
+        updated.classificationStatus = 'pending';
+      } else {
+        updated.classificationStatus = 'manual';
+      }
     }
     
     TransactionRepository.save(updated);
   },
 
-  /**
-   * Confirma a transação e treina o motor de aprendizado.
-   */
-  confirmTransaction: (tx: Transaction, isRecurring: boolean, scope: Scope): void => {
+  confirmTransaction: (tx: Transaction, options: { learnCategory: boolean; isRecurring: boolean }, scope: Scope): void => {
     if (scope.scopeType === 'shared' && tx.payerShare && !tx.migratedFromShared) {
-      const sum = (tx.payerShare.A || 0) + (tx.payerShare.B || 0);
-      if (Math.abs(sum - tx.amount) > 0.01) {
-        throw new Error('A soma dos valores A e B deve ser igual ao total da transação.');
+      const totalCents = toCents(tx.amount);
+      const shareCentsA = toCents(tx.payerShare.A || 0);
+      const shareCentsB = toCents(tx.payerShare.B || 0);
+      if (shareCentsA + shareCentsB !== totalCents) {
+        throw new Error('A soma dos valores A e B deve ser exatamente igual ao total.');
       }
     }
 
-    // 1. Persistência do estado da transação (Responsabilidade do TransactionService)
+    const finalStatus = tx.classificationStatus === 'auto' ? 'auto' : 'manual';
     const confirmedTx: Transaction = { 
       ...tx,
       isConfirmed: true, 
       isSuggested: false,
       isAutoConfirmed: false,
-      isRecurring: isRecurring,
-      classificationStatus: 'manual'
+      isRecurring: options.isRecurring,
+      classificationStatus: finalStatus
     };
     TransactionRepository.save(confirmedTx);
-
-    // 2. Disparo do evento de aprendizado (Responsabilidade da Intelligence Layer)
-    ClassificationEngine.learnFromConfirmation(confirmedTx, { isRecurring });
+    ClassificationEngine.learnFromConfirmation(confirmedTx, options);
   },
 
-  /**
-   * Move uma transação do escopo compartilhado para uma conta individual.
-   */
-  moveToIndividual: (tx: Transaction, userId: 'A' | 'B', sharedScopeId: string): void => {
-    const updated: Transaction = { 
-      ...tx,
-      scopeId: ScopeDomainService.createChildScopeId(sharedScopeId, userId),
-      migratedFromShared: sharedScopeId,
-      visibleInShared: true,
-      isConfirmed: false
-    };
-    TransactionRepository.save(updated);
-  },
+  moveToIndividual: TransactionMigrationService.moveToIndividual,
 
-  /**
-   * Reverte uma transação migrada de volta para o escopo compartilhado.
-   */
-  revertToShared: (tx: Transaction, sharedScopeId: string, defaultSplit?: {A: number, B: number}): void => {
-    if (!tx.migratedFromShared) return;
-
-    const updated: Transaction = {
-      ...tx,
-      scopeId: sharedScopeId,
-      migratedFromShared: undefined,
-      visibleInShared: undefined,
-      isConfirmed: false
-    };
-
-    const splitA = defaultSplit?.A ?? 50;
-    const splitB = defaultSplit?.B ?? 50;
-    updated.payerShare = {
-      A: roundToTwo((updated.amount * splitA) / 100),
-      B: roundToTwo((updated.amount * splitB) / 100),
-    };
-
-    TransactionRepository.save(updated);
-  }
+  revertToShared: TransactionMigrationService.revertToShared
 };

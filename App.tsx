@@ -2,6 +2,8 @@
 import React, { useState } from 'react';
 import { ScopeProvider } from './shared/ScopeContext';
 import { PeriodProvider } from './shared/PeriodContext';
+import { ToastProvider } from './shared/ToastContext';
+import { ToastContainer } from './shared/ToastContainer';
 import { Layout } from './shared/Layout';
 import { ViewType } from './types/finance';
 import { DashboardContainer } from './dashboard/DashboardContainer';
@@ -21,13 +23,16 @@ const App: React.FC = () => {
   };
 
   return (
-    <ScopeProvider>
-      <PeriodProvider>
-        <Layout activeView={activeView} onViewChange={setActiveView}>
-          {renderContent()}
-        </Layout>
-      </PeriodProvider>
-    </ScopeProvider>
+    <ToastProvider>
+      <ScopeProvider>
+        <PeriodProvider>
+          <Layout activeView={activeView} onViewChange={setActiveView}>
+            {renderContent()}
+          </Layout>
+          <ToastContainer />
+        </PeriodProvider>
+      </ScopeProvider>
+    </ToastProvider>
   );
 };
 

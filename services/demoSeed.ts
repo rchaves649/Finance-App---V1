@@ -1,104 +1,82 @@
 
 // DEV ONLY. Remove when Firebase is connected.
 import { CategoryRepository, SubcategoryRepository, TransactionRepository, ClassificationRepository } from './localRepositories';
+import { DefaultSeedService } from './defaultSeedService';
 import { normalizeDescription } from '../classification/classificationService';
+import { Transaction } from '../types/finance';
 
 export const DemoSeedService = {
   seed: (scopeId: string) => {
-    // 1. Categories and Subcategories
-    const categoryData = [
-      { name: 'Alimentação', subs: ['Supermercado', 'Restaurantes', 'Ifood'] },
-      { name: 'Transporte', subs: ['Combustível', 'Uber/99', 'Manutenção'] },
-      { name: 'Moradia', subs: ['Aluguel', 'Energia', 'Internet', 'Condomínio'] },
-      { name: 'Lazer', subs: ['Cinema', 'Viagens', 'Hobbies'] },
-      { name: 'Saúde', subs: ['Farmácia', 'Consulta', 'Exames'] },
-      { name: 'Educação', subs: ['Cursos', 'Livros'] }
-    ];
+    // 1. Garante categorias básicas antes de tudo
+    DefaultSeedService.ensureDefaults(scopeId);
 
-    const createdCategories = categoryData.map(cat => {
-      const category = { id: crypto.randomUUID(), scopeId, name: cat.name };
-      CategoryRepository.save(category);
-      
-      const subs = cat.subs.map(subName => {
-        const sub = { id: crypto.randomUUID(), scopeId, categoryId: category.id, name: subName };
-        SubcategoryRepository.save(sub);
-        return sub;
-      });
+    const categories = CategoryRepository.getAll(scopeId);
+    const subcategories = SubcategoryRepository.getAll(scopeId);
 
-      return { ...category, subs };
-    });
+    const findCat = (name: string) => categories.find(c => c.name === name);
+    const findSub = (catId: string, name: string) => subcategories.find(s => s.categoryId === catId && s.name === name);
 
     const isShared = scopeId.includes('casal');
-    const transactions = [];
+    const transactions: Transaction[] = [];
     const now = new Date();
     
-    // Configurações de Comerciantes
+    // Mapeamento de Comerciantes para as categorias padrões
     const merchants = [
-      { desc: 'Pão de Açúcar', catIdx: 0, subIdx: 0, baseAmount: 350, isFixed: false },
-      { desc: 'Uber *Trip', catIdx: 1, subIdx: 1, baseAmount: 30, isFixed: false },
-      { desc: 'Shell Select', catIdx: 1, subIdx: 0, baseAmount: 220, isFixed: false },
-      { desc: 'Netflix.com', catIdx: 3, subIdx: 2, baseAmount: 55.90, isFixed: false },
-      { desc: 'Droga Raia', catIdx: 4, subIdx: 0, baseAmount: 60, isFixed: false },
-      { desc: 'iFood *Jantar', catIdx: 0, subIdx: 2, baseAmount: 95, isFixed: false },
-      { desc: 'Aluguel Mensal', catIdx: 2, subIdx: 0, baseAmount: 2800, isFixed: true },
-      { desc: 'Energia Enel', catIdx: 2, subIdx: 1, baseAmount: 240, isFixed: true },
-      { desc: 'Condomínio', catIdx: 2, subIdx: 3, baseAmount: 650, isFixed: true },
-      { desc: 'Curso de Inglês', catIdx: 5, subIdx: 0, baseAmount: 450, isFixed: true }
+      { desc: 'Pão de Açúcar', cat: 'Alimentação', sub: 'Supermercado', baseAmount: 350 },
+      { desc: 'Uber *Trip', cat: 'Transporte', sub: 'Uber/99', baseAmount: 30 },
+      { desc: 'Shell Select', cat: 'Transporte', sub: 'Combustível', baseAmount: 220 },
+      { desc: 'Netflix.com', cat: 'Lazer', sub: 'Streaming (Netflix/Spotify)', baseAmount: 55.90 },
+      { desc: 'Droga Raia', cat: 'Saúde', sub: 'Farmácia', baseAmount: 60 },
+      { desc: 'iFood *Jantar', cat: 'Alimentação', sub: 'Lanches/Ifood', baseAmount: 95 },
+      { desc: 'Aluguel Mensal', cat: 'Moradia', sub: 'Aluguel/Prestação', baseAmount: 2800, isFixed: true },
+      { desc: 'Energia Enel', cat: 'Moradia', sub: 'Energia', baseAmount: 240, isFixed: true },
+      { desc: 'Condomínio', cat: 'Moradia', sub: 'Condomínio', baseAmount: 650, isFixed: true },
+      { desc: 'Curso de Inglês', cat: 'Educação', sub: 'Cursos', baseAmount: 450, isFixed: true }
     ];
 
-    // Gerar 4 meses de dados (3 meses de histórico + mês atual)
     for (let m = 0; m <= 3; m++) {
       const targetDate = new Date(now.getFullYear(), now.getMonth() - m, 15);
       const isCurrentMonth = m === 0;
-      
-      // Multiplicador de "inflação" para o mês atual parecer mais alto
       const monthMultiplier = isCurrentMonth ? 1.25 : 1.0;
 
       merchants.forEach(merchant => {
-        // Gastos Fixos ocorrem uma vez por mês
+        const cat = findCat(merchant.cat);
+        const sub = cat ? findSub(cat.id, merchant.sub) : null;
+
+        if (!cat || !sub) return;
+
         if (merchant.isFixed) {
-          const tx = {
+          const tx: Transaction = {
             id: crypto.randomUUID(),
             scopeId,
-            userId: undefined, // Fixos geralmente não são atribuídos a uma pessoa específica no insight
             date: new Date(targetDate.getFullYear(), targetDate.getMonth(), 5).toISOString().split('T')[0],
             description: merchant.desc,
             amount: merchant.baseAmount,
-            categoryId: createdCategories[merchant.catIdx].id,
-            subcategoryId: createdCategories[merchant.catIdx].subs[merchant.subIdx].id,
-            isConfirmed: true
+            categoryId: cat.id,
+            subcategoryId: sub.id,
+            isConfirmed: true,
+            transactionNature: 'expense'
           };
           transactions.push(tx);
         } else {
-          // Gastos Variáveis ocorrem múltiplas vezes
           const frequency = isCurrentMonth ? 5 : 3;
           for (let i = 0; i < frequency; i++) {
             const day = Math.floor(Math.random() * 28) + 1;
             
-            // No mês atual (m=0), a Pessoa A gasta mais para disparar o insight de "contribuinte dominante"
-            let assignedUser = undefined;
-            if (isShared) {
-              if (isCurrentMonth) {
-                assignedUser = Math.random() > 0.2 ? 'Pessoa A' : 'Pessoa B';
-              } else {
-                assignedUser = Math.random() > 0.5 ? 'Pessoa A' : 'Pessoa B';
-              }
-            }
-
-            const tx = {
+            const tx: Transaction = {
               id: crypto.randomUUID(),
               scopeId,
-              userId: assignedUser,
+              userId: isShared ? (Math.random() > 0.5 ? 'Pessoa A' : 'Pessoa B') : undefined,
               date: new Date(targetDate.getFullYear(), targetDate.getMonth(), day).toISOString().split('T')[0],
               description: merchant.desc,
               amount: (merchant.baseAmount * monthMultiplier) + (Math.random() * 20),
-              categoryId: createdCategories[merchant.catIdx].id,
-              subcategoryId: createdCategories[merchant.catIdx].subs[merchant.subIdx].id,
-              isConfirmed: true
+              categoryId: cat.id,
+              subcategoryId: sub.id,
+              isConfirmed: true,
+              transactionNature: 'expense'
             };
             transactions.push(tx);
             
-            // Salvar na memória de classificação apenas uma vez
             if (m === 0 && i === 0) {
               ClassificationRepository.save({
                 scopeId,

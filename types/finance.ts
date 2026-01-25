@@ -1,5 +1,22 @@
-
 export type ScopeType = 'individual' | 'shared';
+
+export const TransactionNatures = {
+  EXPENSE: 'expense',
+  CREDIT: 'credit',
+  REFUND: 'refund',
+  PAYMENT: 'payment',
+  INSTALLMENT_EXPENSE: 'installment_expense',
+  TRANSFER: 'transfer', // Nova natureza para transferências internas
+} as const;
+
+export type TransactionNature = typeof TransactionNatures[keyof typeof TransactionNatures];
+
+export const UserKeys = {
+  A: 'A',
+  B: 'B',
+} as const;
+
+export type UserID = typeof UserKeys[keyof typeof UserKeys];
 
 export interface Scope {
   scopeId: string;
@@ -12,6 +29,7 @@ export interface Category {
   id: string;
   scopeId: string;
   name: string;
+  isDeleted?: boolean; // Suporte a soft delete para manter integridade histórica
 }
 
 export interface Subcategory {
@@ -19,10 +37,12 @@ export interface Subcategory {
   scopeId: string;
   categoryId: string;
   name: string;
+  isDeleted?: boolean; // Suporte a soft delete
 }
 
 export interface Transaction {
   id: string;
+  externalId?: string; // ID único vindo do banco/CSV para evitar duplicidade real
   scopeId: string;
   userId?: string; 
   date: string;
@@ -34,12 +54,22 @@ export interface Transaction {
   isSuggested?: boolean;
   isAutoConfirmed?: boolean;
   isRecurring?: boolean;
+  isNeutralized?: boolean; // Indica se a transação foi anulada (ex: estorno pareado)
   migratedFromShared?: string | boolean;
   visibleInShared?: boolean;
   classificationStatus?: 'auto' | 'manual' | 'pending';
+  transactionNature: TransactionNature;
   payerShare?: {
     A: number | null;
     B: number | null;
+  };
+  /**
+   * Rastro de Auditoria para Migrações e Integridade.
+   */
+  auditTrail?: {
+    originId: string;
+    migratedAt: string;
+    previousScopeId: string;
   };
 }
 
@@ -48,6 +78,7 @@ export interface ClassificationMemoryEntry {
   normalizedKey: string;
   categoryId: string;
   subcategoryId: string;
+  transactionNature?: TransactionNature;
   usageCount: number;
   lastUsedAt: string;
 }
@@ -57,6 +88,7 @@ export interface RecurringMemoryEntry {
   normalizedKey: string;
   categoryId: string;
   subcategoryId: string;
+  transactionNature?: TransactionNature;
   payerShare?: { A: number; B: number };
   isRecurring: boolean;
 }
@@ -79,6 +111,7 @@ export interface CategorySummary {
   name: string;
   value: number;
   subcategories: { subcategoryId: string; name: string; value: number }[];
+  isDeleted?: boolean;
 }
 
 export interface CoupleInsightData {
@@ -126,10 +159,19 @@ export interface Summary {
   pendingCount: number;
   totalsByCategory: CategorySummary[];
   timeSeries: TimeSeriesEntry[];
+  natureTotals: {
+    expenses: number;
+    installments: number;
+    refunds: number;
+    credits: number;
+    transfers: number; // Novo total para transferências
+    invoiceTotal: number;
+  };
 }
 
 export interface RawCSVTransaction {
   date: string;
   description: string;
   amount: number;
+  externalId?: string;
 }

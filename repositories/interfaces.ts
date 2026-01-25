@@ -1,5 +1,4 @@
-
-import { Category, Subcategory, Transaction, ClassificationMemoryEntry, RecurringMemoryEntry } from '../types/finance';
+import { Category, Subcategory, Transaction, ClassificationMemoryEntry, RecurringMemoryEntry, Summary } from '../types/finance';
 
 export interface ICategoryRepository {
   getAll(scopeId: string): Category[];
@@ -23,6 +22,11 @@ export interface ITransactionRepository {
   delete(id: string): void;
 }
 
+export interface IImportLogRepository {
+  isAlreadyImported(scopeId: string, fileName: string): boolean;
+  logImport(scopeId: string, fileName: string): void;
+}
+
 export interface IClassificationRepository {
   getAll(scopeId: string): ClassificationMemoryEntry[];
   find(scopeId: string, normalizedKey: string): ClassificationMemoryEntry | undefined;
@@ -35,6 +39,13 @@ export interface IRecurringRepository {
   find(scopeId: string, normalizedKey: string): RecurringMemoryEntry | undefined;
   save(entry: RecurringMemoryEntry): void;
   delete(scopeId: string, normalizedKey: string): void;
+}
+
+export interface ISummarySnapshotRepository {
+  get(scopeId: string, periodKey: string): Summary | undefined;
+  save(scopeId: string, periodKey: string, summary: Summary): void;
+  invalidate(scopeId: string, periodKey: string): void;
+  invalidateAll(scopeId: string): void;
 }
 
 export interface IAppRepository {

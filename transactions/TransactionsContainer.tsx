@@ -1,134 +1,151 @@
-import React, { useState, useEffect, useCallback } from 'react';
+
+import React, { useState, useCallback, useMemo } from 'react';
 import { useScope } from '../shared/ScopeContext';
-import { 
-  TransactionRepository, 
-  CategoryRepository, 
-  SubcategoryRepository 
-} from '../services/localRepositories';
+import { useToast } from '../shared/ToastContext';
 import { DemoSeedService } from '../services/demoSeed';
 import { TransactionService } from '../services/transactionService';
-import { Transaction, Category, Subcategory } from '../types/finance';
+import { SummaryService } from '../services/summaryService';
+import { Transaction, Period } from '../types/finance';
 import { TransactionsView } from './TransactionsView';
+import { Loader2 } from 'lucide-react';
+import { useTransactionData } from './hooks/useTransactionData';
+import { useTransactionOperations } from './hooks/useTransactionOperations';
+import { formatMonthYear, parseMonthYearString } from '../shared/dateUtils';
 
 export const TransactionsContainer: React.FC = () => {
   const { currentScope } = useScope();
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [subcategories, setSubcategories] = useState<Subcategory[]>([]);
+  const { showToast } = useToast();
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [previewTransactions, setPreviewTransactions] = useState<Transaction[] | null>(null);
+  const [currentImportFileName, setCurrentImportFileName] = useState<string | undefined>();
 
-  // Filtering states
-  const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
-  const [availableMonths, setAvailableMonths] = useState<string[]>([]);
+  const data = useTransactionData(currentScope);
+  const ops = useTransactionOperations(currentScope, data.setTransactions, data.loadData);
 
-  const loadData = useCallback(() => {
-    const sanitizedTxs = TransactionService.getScopedTransactions(currentScope);
+  const natureSummary = useMemo(() => {
+    if (!data.selectedMonth) return { expenses: 0, installments: 0, refunds: 0, credits: 0 };
     
-    // Extract available months from all scoped transactions before filtering
-    const months = Array.from(
-      new Set(
-        sanitizedTxs.map(tx => new Date(tx.date).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }))
-      )
-    );
-    setAvailableMonths(months);
-
-    // Apply the month filter
-    const filteredTxs = selectedMonth
-      ? sanitizedTxs.filter(tx => {
-          const txMonth = new Date(tx.date).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
-          return txMonth === selectedMonth;
-        })
-      : sanitizedTxs;
-
-    setTransactions(filteredTxs);
-    setCategories(CategoryRepository.getAll(currentScope.scopeId));
-    setSubcategories(SubcategoryRepository.getAll(currentScope.scopeId));
-  }, [currentScope, selectedMonth]);
-
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+    const parsed = parseMonthYearString(data.selectedMonth);
+    if (!parsed) return { expenses: 0, installments: 0, refunds: 0, credits: 0 };
+    
+    const period: Period = { kind: 'month', month: parsed.month, year: parsed.year };
+    const summary = SummaryService.getSummary(currentScope.scopeId, period);
+    return summary.natureTotals;
+  }, [data.selectedMonth, currentScope.scopeId, data.transactions]);
 
   const handleImportCSV = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
+    const fileName = file.name;
+    setIsProcessing(true);
     try {
       const text = await file.text();
-      TransactionService.processCSVImport(text, currentScope);
-      loadData();
+      if (!text || text.trim().length < 5) {
+        showToast('O arquivo selecionado parece estar vazio.', 'error');
+        setIsProcessing(false);
+        return;
+      }
+      
+      setTimeout(() => {
+        const { transactions: prepared, isDuplicateFile } = TransactionService.prepareCSVTransactions(text, currentScope, fileName);
+        if (isDuplicateFile && !window.confirm(`O arquivo "${fileName}" já foi importado anteriormente. Continuar?`)) {
+          setIsProcessing(false);
+          return;
+        }
+        if (prepared.length === 0) {
+          showToast('Nenhuma nova transação encontrada ou colunas não reconhecidas.', 'info');
+        } else {
+          setPreviewTransactions(prepared);
+          setCurrentImportFileName(fileName);
+        }
+        setIsProcessing(false);
+      }, 50); 
     } catch (error) {
-      console.error('Erro ao importar CSV:', error);
-      alert('Falha ao processar o arquivo CSV. Verifique o formato.');
+      showToast('Falha crítica ao ler o arquivo.', 'error');
+      setIsProcessing(false);
     } finally {
-      e.target.value = '';
+      if (e.target) e.target.value = '';
     }
   };
 
-  const handleUpdate = (id: string, updates: Partial<Transaction>) => {
-    const tx = transactions.find(t => t.id === id);
-    if (!tx) return;
+  const handleConfirmImport = useCallback(() => {
+    if (!previewTransactions || previewTransactions.length === 0) return;
+    setIsProcessing(true);
+    const fileName = currentImportFileName;
     
-    TransactionService.updateTransaction(tx, updates);
-    loadData();
-  };
+    const targetMonth = formatMonthYear(previewTransactions[0].date);
+    
+    setTimeout(() => {
+      try {
+        TransactionService.saveTransactions(previewTransactions, fileName);
+        setPreviewTransactions(null);
+        setCurrentImportFileName(undefined);
+        
+        // Atualiza o mês selecionado para o mês do arquivo importado
+        data.setSelectedMonth(targetMonth);
+        
+        // Força o recarregamento dos dados para garantir que apareçam
+        // especialmente se o targetMonth for igual ao selecionado anteriormente
+        data.loadData();
+        
+        showToast('Extrato importado com sucesso!', 'success');
+      } catch (error) {
+        showToast('Falha ao salvar os lançamentos.', 'error');
+      } finally {
+        setIsProcessing(false);
+      }
+    }, 100);
+  }, [previewTransactions, currentImportFileName, data, showToast]);
 
-  const handleConfirm = (id: string, isRecurring?: boolean) => {
-    const tx = transactions.find(t => t.id === id);
-    if (!tx) return;
+  const handleCancelImport = useCallback(() => {
+    setPreviewTransactions(null);
+    setCurrentImportFileName(undefined);
+    showToast('Importação descartada.', 'info');
+  }, [showToast]);
 
-    try {
-      TransactionService.confirmTransaction(tx, !!isRecurring, currentScope);
-      loadData();
-    } catch (error: any) {
-      alert(error.message || 'Erro ao confirmar transação.');
-    }
-  };
-
-  const handleMoveToIndividual = (id: string, userId: 'A' | 'B') => {
-    const tx = transactions.find(t => t.id === id);
-    if (!tx) return;
-
-    TransactionService.moveToIndividual(tx, userId, currentScope.scopeId);
-    loadData();
-  };
-
-  const handleRevertToShared = (id: string) => {
-    const tx = transactions.find(t => t.id === id);
-    if (!tx) return;
-
-    TransactionService.revertToShared(tx, currentScope.scopeId, currentScope.defaultSplit);
-    loadData();
-  };
-
-  const handleDelete = (id: string) => {
-    if (window.confirm('Deseja realmente excluir este lançamento?')) {
-      TransactionRepository.delete(id);
-      loadData();
-    }
-  };
-
-  const handleLoadDemo = () => {
-    DemoSeedService.seed(currentScope.scopeId);
-    loadData();
-  };
+  const handleLoadDemo = useCallback(() => {
+    setIsProcessing(true);
+    setTimeout(() => {
+      DemoSeedService.seed(currentScope.scopeId);
+      data.loadData();
+      setIsProcessing(false);
+      showToast('Dados de exemplo carregados.', 'success');
+    }, 100);
+  }, [currentScope.scopeId, data, showToast]);
 
   return (
-    <TransactionsView 
-      transactions={transactions}
-      categories={categories}
-      subcategories={subcategories}
-      scopeType={currentScope.scopeType}
-      currentScopeId={currentScope.scopeId}
-      onImport={handleImportCSV}
-      onUpdate={handleUpdate}
-      onConfirm={handleConfirm}
-      onDelete={handleDelete}
-      onMoveToIndividual={handleMoveToIndividual}
-      onRevertToShared={handleRevertToShared}
-      onLoadDemo={handleLoadDemo}
-      selectedMonth={selectedMonth}
-      setSelectedMonth={setSelectedMonth}
-      availableMonths={availableMonths}
-    />
+    <>
+      {isProcessing && (
+        <div className="fixed inset-0 z-[200] bg-white/60 backdrop-blur-sm flex items-center justify-center animate-in fade-in duration-300">
+          <div className="bg-white p-8 rounded-3xl shadow-2xl border border-gray-100 flex flex-col items-center gap-4">
+            <Loader2 size={40} className="text-indigo-600 animate-spin" />
+            <p className="text-gray-900 font-bold">Processando dados...</p>
+          </div>
+        </div>
+      )}
+      <TransactionsView 
+        transactions={data.transactions}
+        categories={data.categories}
+        subcategories={data.subcategories}
+        scopeType={currentScope.scopeType}
+        currentScopeId={currentScope.scopeId}
+        defaultSplit={currentScope.defaultSplit}
+        summary={natureSummary}
+        onImport={handleImportCSV}
+        onUpdate={ops.handleUpdate}
+        onConfirm={ops.handleConfirm}
+        onDelete={ops.handleDelete}
+        onMoveToIndividual={ops.handleMoveToIndividual}
+        onRevertToShared={ops.handleRevertToShared}
+        onLoadDemo={handleLoadDemo}
+        onSaveManual={ops.handleSaveManual}
+        selectedMonth={data.selectedMonth}
+        setSelectedMonth={data.setSelectedMonth}
+        availableMonths={data.availableMonths}
+        previewTransactions={previewTransactions}
+        onConfirmImport={handleConfirmImport}
+        onCancelImport={handleCancelImport}
+      />
+    </>
   );
 };
