@@ -1,43 +1,56 @@
+
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useScope } from '../shared/ScopeContext';
 import { usePeriod } from '../shared/PeriodContext';
-import { TransactionRepository, CategoryRepository } from '../services/localRepositories';
-import { SummaryService } from '../services/summaryService';
+import { DashboardRepository } from '../repositories/dashboardRepository';
+import { DashboardService } from '../services/dashboardService';
 import { CoupleInsightService } from '../services/coupleInsightService';
 import { DemoSeedService } from '../services/demoSeed';
-import { Transaction, Category, CoupleInsightDTO } from '../types/finance';
+import { CoupleInsightDTO, Summary } from '../types/finance';
 import { DashboardView } from './DashboardView';
-import { formatCurrency } from '../shared/formatUtils';
+import { useDashboardState } from './hooks/useDashboardState';
 
-export const DashboardContainer: React.FC = () => {
+interface DashboardContainerProps {
+  onNavigateToTransactions: () => void;
+}
+
+export const DashboardContainer: React.FC<DashboardContainerProps> = ({ onNavigateToTransactions }) => {
   const { currentScope } = useScope();
   const { period, setPeriod } = usePeriod();
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
+  
+  // UI Interaction State
+  const dashboardState = useDashboardState(currentScope, period);
+  
+  // Data State
+  const [summary, setSummary] = useState<Summary | null>(null);
+  const [isEmpty, setIsEmpty] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
-  const loadData = useCallback(async () => {
+  const loadDashboardData = useCallback(async () => {
     setIsLoading(true);
-    // Simulate brief network delay for UX satisfaction
-    await new Promise(resolve => setTimeout(resolve, 300));
-
-    const txs = TransactionRepository.getAll(currentScope.scopeId);
-    const cats = CategoryRepository.getAll(currentScope.scopeId);
+    // Simulação de latência controlada para UX
+    await new Promise(resolve => setTimeout(resolve, 200));
     
-    setTransactions(txs);
-    setCategories(cats);
+    const scopeEmpty = DashboardRepository.isScopeEmpty(currentScope.scopeId);
+    setIsEmpty(scopeEmpty);
+
+    if (!scopeEmpty) {
+      // Repositório Forte: Uma única chamada retorna o DTO pronto para o serviço
+      const summaryDTO = DashboardRepository.getSummaryDTO(currentScope.scopeId, period);
+      setSummary(summaryDTO);
+    }
+    
     setIsLoading(false);
-  }, [currentScope.scopeId]);
+  }, [currentScope.scopeId, period]);
 
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    loadDashboardData();
+  }, [loadDashboardData]);
 
-  // Derive stats and insights from the scoped data and current period
+  // Insights Derivados (Agregação de 2ª Ordem)
   const stats = useMemo(() => {
-    const summary = SummaryService.getSummary(currentScope.scopeId, period);
-    
-    const isEmpty = transactions.length === 0 && categories.length === 0;
+    if (!summary) return null;
+
     const isPeriodEmpty = summary.totalSpent === 0 && summary.pendingCount === 0;
 
     let insight: CoupleInsightDTO | null = null;
@@ -48,37 +61,51 @@ export const DashboardContainer: React.FC = () => {
     return { 
       totalSpent: summary.totalSpent, 
       pendingCount: summary.pendingCount, 
+      needsAttention: summary.needsAttention,
       currentMonthTotal: summary.totalSpent, 
-      chartData: summary.totalsByCategory.map(c => ({ name: c.name, value: c.value })),
       categorySummaries: summary.totalsByCategory,
+      timeSeries: summary.timeSeries,
+      monthlyEvolution: summary.monthlyEvolution,
       isEmpty,
       isPeriodEmpty,
       insight
     };
-  }, [currentScope.scopeId, currentScope.scopeType, period, transactions, categories]);
+  }, [currentScope, period, summary, isEmpty]);
 
-  const [isInsightExpanded, setIsInsightExpanded] = useState(false);
-
-  // Reset insight expansion when scope or period changes
-  useEffect(() => {
-    setIsInsightExpanded(false);
-  }, [currentScope.scopeId, period]);
+  const categoryData = useMemo(() => {
+    if (!stats || !summary) return [];
+    return DashboardService.getCategoryBreakdownForMonth(
+      summary.monthlyEvolution, 
+      dashboardState.focusedMonthKey, 
+      summary.totalsByCategory
+    );
+  }, [dashboardState.focusedMonthKey, stats, summary]);
 
   const handleLoadDemo = async () => {
     DemoSeedService.seed(currentScope.scopeId);
-    await loadData();
+    await loadDashboardData();
   };
+
+  if (!stats && !isLoading) return null;
 
   return (
     <DashboardView 
-      {...stats} 
+      {...stats!} 
+      categorySummaries={categoryData}
       isLoading={isLoading}
       scopeType={currentScope.scopeType}
       period={period}
       onPeriodChange={setPeriod}
       onLoadDemo={handleLoadDemo} 
-      isInsightExpanded={isInsightExpanded}
-      onToggleInsight={() => setIsInsightExpanded(!isInsightExpanded)}
+      isInsightExpanded={dashboardState.isInsightExpanded}
+      onToggleInsight={dashboardState.toggleInsight}
+      selectedCategory={dashboardState.selectedCategory}
+      onSelectCategory={dashboardState.handleSelectCategory}
+      horizontalSelectedCategory={dashboardState.horizontalSelectedCategory}
+      onSelectHorizontalCategory={dashboardState.handleSelectHorizontalCategory}
+      onNavigateToTransactions={onNavigateToTransactions}
+      onSelectMonth={dashboardState.handleSelectMonth}
+      focusedMonthKey={dashboardState.focusedMonthKey}
     />
   );
 };

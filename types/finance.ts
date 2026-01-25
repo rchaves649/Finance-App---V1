@@ -1,3 +1,4 @@
+
 export type ScopeType = 'individual' | 'shared';
 
 export const TransactionNatures = {
@@ -6,7 +7,7 @@ export const TransactionNatures = {
   REFUND: 'refund',
   PAYMENT: 'payment',
   INSTALLMENT_EXPENSE: 'installment_expense',
-  TRANSFER: 'transfer', // Nova natureza para transferências internas
+  TRANSFER: 'transfer',
 } as const;
 
 export type TransactionNature = typeof TransactionNatures[keyof typeof TransactionNatures];
@@ -22,14 +23,14 @@ export interface Scope {
   scopeId: string;
   scopeType: ScopeType;
   name: string;
-  defaultSplit?: { A: number; B: number }; // Percentages, e.g. { A: 50, B: 50 }
+  defaultSplit?: { A: number; B: number };
 }
 
 export interface Category {
   id: string;
   scopeId: string;
   name: string;
-  isDeleted?: boolean; // Suporte a soft delete para manter integridade histórica
+  isDeleted?: boolean;
 }
 
 export interface Subcategory {
@@ -37,12 +38,12 @@ export interface Subcategory {
   scopeId: string;
   categoryId: string;
   name: string;
-  isDeleted?: boolean; // Suporte a soft delete
+  isDeleted?: boolean;
 }
 
 export interface Transaction {
   id: string;
-  externalId?: string; // ID único vindo do banco/CSV para evitar duplicidade real
+  externalId?: string;
   scopeId: string;
   userId?: string; 
   date: string;
@@ -54,7 +55,7 @@ export interface Transaction {
   isSuggested?: boolean;
   isAutoConfirmed?: boolean;
   isRecurring?: boolean;
-  isNeutralized?: boolean; // Indica se a transação foi anulada (ex: estorno pareado)
+  isNeutralized?: boolean;
   migratedFromShared?: string | boolean;
   visibleInShared?: boolean;
   classificationStatus?: 'auto' | 'manual' | 'pending';
@@ -63,9 +64,6 @@ export interface Transaction {
     A: number | null;
     B: number | null;
   };
-  /**
-   * Rastro de Auditoria para Migrações e Integridade.
-   */
   auditTrail?: {
     originId: string;
     migratedAt: string;
@@ -114,20 +112,34 @@ export interface CategorySummary {
   isDeleted?: boolean;
 }
 
-export interface CoupleInsightData {
-  period: Period;
-  baselineTotal: number;
-  currentTotal: number;
-  changePct: number;
-  mainDriver: "fixed" | "variable";
-  fixedTotal: number;
-  variableTotal: number;
-  responsibilitySplit: {
-    personA: { amount: number; pct: number };
-    personB: { amount: number; pct: number };
-    shared: { amount: number; pct: number };
-  };
-  dominantContributor: "personA" | "personB" | "balanced";
+/**
+ * TimeSeriesEntry: DTO padronizado para Recharts.
+ * O mapeamento de categorias é tipado como numérico para evitar bugs de agregação.
+ */
+export interface TimeSeriesEntry {
+  bucketKey: string;
+  label: string;
+  total: number;
+  [categoryKey: string]: number | string; // Permitimos string apenas para label e bucketKey
+}
+
+export interface NatureTotalsDTO {
+  expenses: number;
+  installments: number;
+  refunds: number;
+  credits: number;
+  transfers: number;
+  invoiceTotal: number;
+}
+
+export interface Summary {
+  totalSpent: number;
+  pendingCount: number;
+  needsAttention: boolean;
+  totalsByCategory: CategorySummary[];
+  timeSeries: TimeSeriesEntry[];
+  monthlyEvolution: TimeSeriesEntry[]; 
+  natureTotals: NatureTotalsDTO;
 }
 
 export interface CoupleInsightMetrics {
@@ -140,33 +152,28 @@ export interface CoupleInsightMetrics {
   dominantContributor: 'personA' | 'personB' | 'balanced';
 }
 
+export interface CoupleInsightData {
+  period: Period;
+  baselineTotal: number;
+  currentTotal: number;
+  changePct: number;
+  mainDriver: 'fixed' | 'variable';
+  fixedTotal: number;
+  variableTotal: number;
+  responsibilitySplit: {
+    personA: { amount: number; pct: number };
+    personB: { amount: number; pct: number };
+    shared: { amount: number; pct: number };
+  };
+  dominantContributor: 'personA' | 'personB' | 'balanced';
+}
+
 export interface CoupleInsightDTO {
   metrics: CoupleInsightMetrics;
   summaryText: string;
   explanationText: string;
   topDrivers: TopDriver[];
   data: CoupleInsightData;
-}
-
-export interface TimeSeriesEntry {
-  bucketKey: string;
-  label: string;
-  total: number;
-}
-
-export interface Summary {
-  totalSpent: number;
-  pendingCount: number;
-  totalsByCategory: CategorySummary[];
-  timeSeries: TimeSeriesEntry[];
-  natureTotals: {
-    expenses: number;
-    installments: number;
-    refunds: number;
-    credits: number;
-    transfers: number; // Novo total para transferências
-    invoiceTotal: number;
-  };
 }
 
 export interface RawCSVTransaction {

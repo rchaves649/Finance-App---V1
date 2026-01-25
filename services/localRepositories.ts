@@ -1,4 +1,4 @@
-import { Category, Subcategory, Transaction, ClassificationMemoryEntry, RecurringMemoryEntry, Summary } from '../types/finance';
+import { Category, Subcategory, Transaction, ClassificationMemoryEntry, RecurringMemoryEntry, Summary, Period } from '../types/finance';
 import { 
   ICategoryRepository, 
   ISubcategoryRepository, 
@@ -10,6 +10,7 @@ import {
   IAppRepository 
 } from '../repositories/interfaces';
 import { toCents } from '../shared/formatUtils';
+import { inPeriod } from '../shared/dateUtils';
 
 const STORAGE_KEYS = {
   CATEGORIES: 'fc_categories',
@@ -25,10 +26,6 @@ const GC_LIMITS = {
   CLASSIFICATION: 1000 
 };
 
-/**
- * Caches em memória O(1).
- * Estrutura: Map<ScopeId, Map<NormalizedKey, Entry>>
- */
 const classificationCache = new Map<string, Map<string, ClassificationMemoryEntry>>();
 const recurringCache = new Map<string, Map<string, RecurringMemoryEntry>>();
 
@@ -111,6 +108,12 @@ export const SubcategoryRepository: ISubcategoryRepository = {
 };
 
 export const TransactionRepository: ITransactionRepository = {
+  getByPeriod: (scopeId: string, period: Period) => {
+    // Simula uma query indexada no Firestore: db.collection('transactions').where('scopeId', '==', scopeId).where('date', '>=', start).where('date', '<=', end)
+    return getLocal<Transaction>(STORAGE_KEYS.TRANSACTIONS).filter(t => 
+      t.scopeId === scopeId && inPeriod(t.date, period)
+    );
+  },
   getAll: (scopeId: string) => getLocal<Transaction>(STORAGE_KEYS.TRANSACTIONS).filter(t => t.scopeId === scopeId),
   getSharedView: (scopeId: string) => getLocal<Transaction>(STORAGE_KEYS.TRANSACTIONS).filter(t => t.scopeId === scopeId || (t.visibleInShared && t.migratedFromShared)),
   save: (tx: Transaction) => {
@@ -202,7 +205,6 @@ export const ClassificationRepository: IClassificationRepository = {
     return Array.from(scopeMap.values());
   },
   find: (scopeId: string, normalizedKey: string) => {
-    // Garante que o cache do escopo está carregado
     if (!classificationCache.has(scopeId)) {
       ClassificationRepository.getAll(scopeId);
     }
@@ -227,7 +229,6 @@ export const ClassificationRepository: IClassificationRepository = {
 
     setLocal(STORAGE_KEYS.CLASSIFICATION, updatedAll);
     
-    // Atualiza cache O(1)
     const scopeMap = new Map<string, ClassificationMemoryEntry>(
       updatedAll.filter(e => e.scopeId === entry.scopeId).map(e => [e.normalizedKey, e])
     );

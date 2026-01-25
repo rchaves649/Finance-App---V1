@@ -1,4 +1,4 @@
-import { Category, Subcategory, Transaction, ClassificationMemoryEntry, RecurringMemoryEntry, Summary } from '../types/finance';
+import { Category, Subcategory, Transaction, ClassificationMemoryEntry, RecurringMemoryEntry, Summary, Period } from '../types/finance';
 
 export interface ICategoryRepository {
   getAll(scopeId: string): Category[];
@@ -15,6 +15,11 @@ export interface ISubcategoryRepository {
 }
 
 export interface ITransactionRepository {
+  /**
+   * Busca transações de forma otimizada filtrando por escopo e período.
+   * No backend real, isso se traduz em uma query indexada (where scopeId == X && date >= Y).
+   */
+  getByPeriod(scopeId: string, period: Period): Transaction[];
   getAll(scopeId: string): Transaction[];
   getSharedView(scopeId: string): Transaction[];
   save(tx: Transaction): void;

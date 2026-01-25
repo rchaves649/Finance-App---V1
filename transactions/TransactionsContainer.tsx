@@ -23,15 +23,20 @@ export const TransactionsContainer: React.FC = () => {
   const ops = useTransactionOperations(currentScope, data.setTransactions, data.loadData);
 
   const natureSummary = useMemo(() => {
-    if (!data.selectedMonth) return { expenses: 0, installments: 0, refunds: 0, credits: 0 };
+    if (!data.selectedMonth) return { expenses: 0, installments: 0, refunds: 0, credits: 0, transfers: 0, invoiceTotal: 0 };
     
     const parsed = parseMonthYearString(data.selectedMonth);
-    if (!parsed) return { expenses: 0, installments: 0, refunds: 0, credits: 0 };
+    if (!parsed) return { expenses: 0, installments: 0, refunds: 0, credits: 0, transfers: 0, invoiceTotal: 0 };
     
     const period: Period = { kind: 'month', month: parsed.month, year: parsed.year };
-    const summary = SummaryService.getSummary(currentScope.scopeId, period);
+    // Fix: Pass the required rawData object as the third argument to SummaryService.getSummary
+    const summary = SummaryService.getSummary(currentScope.scopeId, period, {
+      allTransactions: data.transactions,
+      categories: data.categories,
+      subcategories: data.subcategories
+    });
     return summary.natureTotals;
-  }, [data.selectedMonth, currentScope.scopeId, data.transactions]);
+  }, [data.selectedMonth, currentScope.scopeId, data.transactions, data.categories, data.subcategories]);
 
   const handleImportCSV = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];

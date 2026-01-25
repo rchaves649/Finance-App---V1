@@ -15,10 +15,10 @@ const App: React.FC = () => {
 
   const renderContent = () => {
     switch (activeView) {
-      case 'dashboard': return <DashboardContainer />;
+      case 'dashboard': return <DashboardContainer onNavigateToTransactions={() => setActiveView('transactions')} />;
       case 'transactions': return <TransactionsContainer />;
       case 'settings': return <SettingsContainer />;
-      default: return <DashboardContainer />;
+      default: return <DashboardContainer onNavigateToTransactions={() => setActiveView('transactions')} />;
     }
   };
 
